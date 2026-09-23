@@ -1,0 +1,9 @@
+# Archivos locales y secretos
+.env
+.env.*
+!.env.example
+Inovac car Credenciales.txt
+
+# Dependencias y archivos de despliegue local
+node_modules/
+.vercel/
