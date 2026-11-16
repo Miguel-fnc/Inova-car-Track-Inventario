@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#102b46">
+    <meta name="description" content="Panel de control de inventario de Inova Car.">
+    <title>Bujías | Inova Car</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="CSS/panel.css">
+    <script src="https://unpkg.com/lucide@latest">
+    </script>
+  </head>
+  <body data-panel="bujias">
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="index.html" aria-label="Inova Car, inicio">
+          <span class="brand-mark">
+            <i data-lucide="car-front">
+            </i>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-van preview-icon">
+              <path d="M13 6v5a1 1 0 0 0 1 1h6.102a1 1 0 0 1 .712.298l.898.91a1 1 0 0 1 .288.702V17a1 1 0 0 1-1 1h-3"/>
+              <path d="M5 18H3a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2h12c1.1 0 2.1.8 2.4 1.8l1.176 4.2"/>
+              <path d="M9 18h5"/>
+              <circle cx="16" cy="18" r="2"/>
+              <circle cx="7" cy="18" r="2"/>
+            </svg>
+          </span>
+          <span class="brand-word">inova<span>car</span>
+          </span>
+        </a>
+        <div class="side-caption">MENÚ PRINCIPAL</div>
+        <nav class="category-nav" id="categoryNav" aria-label="Categorías de inventario">
+          <a class="nav-item" href="panel_control_mobil.html">
+            <i data-lucide="droplets">
+            </i>
+            <span>Aceites Mobil</span>
+            <span class="nav-count">5</span>
+          </a>
+          <a class="nav-item" href="panel_control_castrol.html">
+            <i data-lucide="droplets">
+            </i>
+            <span>Aceites Castrol</span>
+            <span class="nav-count">3</span>
+          </a>
+          <a class="nav-item" href="panel_control_rooshfran.html">
+            <i data-lucide="droplets">
+            </i>
+            <span>Aceites Roshfrans</span>
+          </a>
+          <div class="nav-divider">
+          </div>
+          <a class="nav-item" href="panel_control_limpiparabrisas.html">
+            <i data-lucide="wind">
+            </i>
+            <span>Limpiaparabrisas</span>
+          </a>
+          <a class="nav-item" href="panel_control_filtros.html">
+            <i data-lucide="layers-3">
+            </i>
+            <span>Filtros</span>
+          </a>
+          <a class="nav-item active" href="panel_control_bujias.html" aria-current="page">
+            <i data-lucide="zap">
+            </i>
+            <span>Bujías</span>
+          </a>
+          <a class="nav-item" href="panel_control_cubrevolantes.html">
+            <i data-lucide="circle">
+            </i>
+            <span>Cubrevolantes</span>
+          </a>
+          <a class="nav-item" href="panel_control_tapetes.html">
+            <i data-lucide="grid-2x2">
+            </i>
+            <span>Tapetes</span>
+          </a>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="sidebar-foot">
+            <span class="online-dot">
+            </span> Sistema de inventario</div>
+        </div>
+      </aside>
+      <main class="main-area">
+        <header class="topbar">
+          <button class="menu-toggle" id="menuToggle" aria-label="Abrir menú">
+            <i data-lucide="menu">
+            </i>
+          </button>
+          <div class="breadcrumbs">
+            <span>Inventario</span>
+            <i data-lucide="chevron-right">
+            </i>
+            <strong id="breadcrumbCategory">Bujías</strong>
+          </div>
+          <div class="topbar-actions">
+            <div class="account-chip">
+              <span class="avatar">
+               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mail preview-icon">
+                  <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>
+                  <rect x="2" y="4" width="20" height="16" rx="2"/>
+                </svg>
+                <i data-lucide="user-round">
+                </i>
+              </span>
+              <span class="account-email" id="userEmailDisplay">Cargando cuenta…</span>
+            </div>
+            <button id="logoutBtn" class="logout-button">
+              <i data-lucide="log-out">
+              </i>
+              <span>Cerrar sesión</span>
+            </button>
+          </div>
+        </header>
+        <div class="content-wrap">
+          <section class="page-heading">
+            <div>
+              <p class="kicker">INOVA CAR <span>·</span> CONTROL DE INVENTARIO</p>
+              <h1 id="pageTitle">Bujías</h1>
+              <p class="page-subtitle">Consulta existencias y administra los productos de tu negocio.</p>
+            </div>
+            <div class="updated-chip">
+              <span class="online-dot">
+              </span> Inventario en línea</div>
+          </section>
+          <section class="inventory-card" aria-labelledby="tableTitle">
+            <div class="table-heading">
+              <div>
+                <div class="table-title-row">
+                  <span class="table-title-icon">
+                    <i data-lucide="archive">
+                    </i>
+                  </span>
+                  <h2 id="tableTitle">Productos</h2>
+                  <span class="result-count" id="resultCount">—</span>
+                </div>
+                <p>Administra existencias y consulta los detalles de cada producto.</p>
+              </div>
+              <label class="search-box">
+                <i data-lucide="search">
+                </i>
+                <span class="sr-only">Buscar productos</span>
+                <input id="searchInput" type="search" placeholder="Buscar producto…" autocomplete="off">
+              </label>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Marca</th>
+                    <th>Codigo</th>
+                    <th>Precio</th>
+                    <th>Stock</th>
+                  </tr>
+                </thead>
+                <tbody id="inventoryTableBody">
+                  <tr>
+                    <td colspan="5" class="loading-cell">
+                      <span class="spinner">
+                      </span> Cargando inventario…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class= "submit-button">
+              <button id="submitButton">Actualizar</button>
+            </div>
+            <div class="table-footer">
+              <span id="tableFooterText">Mostrando productos de la categoría seleccionada</span>
+              <span class="secure-label">
+                <i data-lucide="shield-check">
+                </i> Datos sincronizados</span>
+            </div>
+          </section>
+          <footer class="page-footer">© 2026 Inova Car <span>·</span> Hecho para llevar tu negocio en orden.</footer>
+        </div>
+      </main>
+    </div>
+    <div class="sidebar-scrim" id="sidebarScrim">
+    </div>
+    <script type="module" src="JS/panel_control_bujias.js">
+    </script>
+  </body>
+</html>
