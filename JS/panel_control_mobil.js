@@ -18,6 +18,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const inventoryTableBody = document.querySelector('#inventoryTableBody');
 const lineFilter = document.querySelector('#lineFilter');
 const resultCount = document.querySelector('#resultCount');
+const searchInput = document.querySelector('#searchInput');
+const updateButton = document.querySelector('#submitButton');
+
+let productosCargados = [];
+let tablaActual = TABLAS_POR_LINEA[lineFilter.value];
 
 if (email && emailInput) {
     userEmailDisplay.textContent = email;
@@ -125,6 +130,8 @@ async function mostrarProductosDeLaLinea() {
   resultCount.textContent = '…';
 
   const productos = await cargarProductos(tabla);
+  productosCargados = productos;
+  tablaActual = tabla;
   
   if (!productos) return;
 
@@ -141,5 +148,29 @@ async function mostrarProductosDeLaLinea() {
   });
 }
 
+function buscarProductos() {
+  const texto = searchInput.value.trim().toLowerCase();
+
+  const productosFiltrados = productosCargados.filter((producto) => {
+    return (
+      String(producto.presentacion ?? '').toLowerCase().includes(texto) ||
+      String(producto.viscosidad ?? '').toLowerCase().includes(texto)
+    );
+  });
+
+  inventoryTableBody.replaceChildren();
+
+  productosFiltrados.forEach((producto) => {
+    inventoryTableBody.appendChild(crearFila(producto, tablaActual));
+  });
+
+  resultCount.textContent = productosFiltrados.length;
+}
+
+updateButton.addEventListener('click', async () => {
+  window.location.reload();
+});
+
+searchInput.addEventListener('input', buscarProductos);
 lineFilter.addEventListener('change', mostrarProductosDeLaLinea);
 mostrarProductosDeLaLinea();
