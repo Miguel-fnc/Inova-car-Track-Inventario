@@ -9,8 +9,12 @@ const emailInput = document.querySelector('#userEmailDisplay');
 const logoutButton = document.querySelector('#logoutBtn');
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const inventoryTableBody = document.querySelector('#inventoryTableBody');
-const lineFilter = document.querySelector('#lineFilter');
 const resultCount = document.querySelector('#resultCount');
+const searchInput = document.querySelector('#searchInput');
+const updateButton = document.querySelector('#submitButton');
+
+let productosCargados = [];
+let tablaActual = 'BUJIAS';
 
 if (email && emailInput) {
     userEmailDisplay.textContent = email;
@@ -113,7 +117,9 @@ async function mostrarProductosDeLaLinea() {
   resultCount.textContent = '…';
 
   const productos = await cargarProductos(tabla);
-  
+  productosCargados = productos;
+  tablaActual = tabla;
+
   if (!productos) return;
 
   inventoryTableBody.replaceChildren();
@@ -129,4 +135,29 @@ async function mostrarProductosDeLaLinea() {
   });
 }
 
+function buscarProductos() {
+  const texto = searchInput.value.trim().toLowerCase();
+
+  const productosFiltrados = productosCargados.filter((producto) => {
+    return (
+      String(producto.codigo ?? '').toLowerCase().includes(texto));
+  });
+
+  inventoryTableBody.replaceChildren();
+
+  productosFiltrados.forEach((producto) => {
+    inventoryTableBody.appendChild(crearFila(producto, tablaActual));
+  });
+
+  resultCount.textContent = productosFiltrados.length;
+}
+
+updateButton.addEventListener('click', async () => {
+  window.location.reload();
+});
+
+updateButton.addEventListener('click', () => {
+  window.location.reload();
+});
+searchInput.addEventListener('input', buscarProductos);
 mostrarProductosDeLaLinea();
