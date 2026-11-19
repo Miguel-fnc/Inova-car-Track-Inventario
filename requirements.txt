@@ -1,0 +1,144 @@
+INOVA CAR - REQUISITOS Y GUÍA PARA EJECUTAR EL PROYECTO
+========================================================
+
+Este archivo documenta las herramientas y configuración del proyecto. No es
+un archivo de dependencias de Python y no se instala con pip.
+
+1. HERRAMIENTAS NECESARIAS
+--------------------------
+- Git, para descargar el repositorio.
+- Node.js 22.x y npm, para instalar y ejecutar la API.
+- Terraform >= 1.5.0, para crear la infraestructura.
+- AWS CLI v2, para publicar los archivos en S3 y consultar AWS.
+- PowerShell 7 recomendado (Windows PowerShell 5.1 también puede servir).
+- Docker Desktop, opcional, para correr Valkey localmente en Windows.
+- Acceso al proyecto de Supabase y al AWS Academy Learner Lab usados por Inova Car.
+
+No se requiere Python ni instalar dependencias de frontend: el sitio usa HTML,
+CSS y JavaScript nativo. Las dependencias de Node están declaradas en api/package.json.
+
+2. DESCARGAR Y PREPARAR EL PROYECTO
+-----------------------------------
+1) Clonar el repositorio y abrir PowerShell en su carpeta raíz.
+2) Crear la configuración local de la API:
+
+   Copy-Item api/.env.example api/.env
+
+3) Editar api/.env con los valores del proyecto Supabase:
+
+   SUPABASE_URL=https://<project-ref>.supabase.co
+   SUPABASE_ANON_KEY=<clave-anon-publicable-del-proyecto>
+   PORT=3000
+   REDIS_URL=redis://127.0.0.1:6379
+
+   No poner la clave service_role en el navegador, api/.env ni este archivo.
+   api/.env contiene credenciales y no debe subirse a Git.
+
+4) Instalar las dependencias de la API:
+
+   cd api
+   npm install
+
+3. SUPABASE
+-----------
+- El proyecto debe tener habilitados Supabase Auth por correo y los usuarios que
+  usarán la aplicación.
+- La API usa SUPABASE_URL y SUPABASE_ANON_KEY y reenvía el token del usuario.
+  Las políticas RLS se siguen aplicando; no se usa service_role.
+- Crear las tablas de productos y columnas que espera api/server.js. Los nombres
+  de tabla deben coincidir exactamente con la lista PRODUCT_TABLES en ese archivo.
+- Para aceites: id, marca, tipo, presentacion, viscosidad, precio, stock.
+- Para limpiaparabrisas: id, marca, medida, presentacion, precio, stock.
+- Para filtros: id, codigo, tipo, precio, stock.
+- Para bujias: id, marca, codigo, precio, stock.
+- Para cubrevolantes: id, material, precio, stock.
+- Para tapetes: id, presentacion, color, piezas, precio, stock.
+- Conceder a authenticated los permisos SQL necesarios (SELECT y UPDATE) y
+  configurar políticas RLS de lectura y actualización para cada tabla.
+- El correo y contraseña se gestionan en Supabase Auth; no guardar contraseñas
+  de usuarios en una tabla propia.
+- Las rutas de facturas aún no están implementadas.
+
+4. EJECUCIÓN LOCAL DE LA API (OPCIONAL)
+---------------------------------------
+La API necesita Valkey/Redis en REDIS_URL. En Windows se puede iniciar Valkey
+con Docker Desktop:
+
+   docker run --name inova-valkey -p 6379:6379 -d valkey/valkey:8
+
+Luego, desde la carpeta api, cargar las variables del archivo .env en la sesión
+de PowerShell e iniciar Node:
+
+   Get-Content .env | ForEach-Object {
+     if ($_ -match '^([^#=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
+   }
+   npm start
+
+La API escucha en http://127.0.0.1:3000. Si Valkey no está disponible, la API
+intenta consultar Supabase sin caché. Para ejecutar el sitio completo en local,
+la API requiere un proxy local para que el navegador pueda llamarla desde el
+origen del sitio; CORS/proxy local no está configurado en este repositorio. La
+forma preparada para usar todo desde el navegador es desplegar y usar el API
+Gateway de AWS.
+
+El frontend también tiene el URL y la clave anon de Supabase en
+JS/Login.js y JS/inventory-cache.js. La clave anon es pública y debe corresponder
+al mismo proyecto Supabase de api/.env. Si se conecta a otro proyecto, actualizar
+esos archivos también y crear las tablas y políticas necesarias.
+
+5. AWS ACADEMY LEARNER LAB Y TERRAFORM
+--------------------------------------
+- Iniciar el Learner Lab y usar sus credenciales temporales de AWS CLI. No usar
+  credenciales personales ni guardarlas en el repositorio.
+- Región configurada por defecto: us-east-1.
+- Terraform espera un bucket privado llamado:
+  inova-car-<ID-de-cuenta-AWS>-us-east-1
+  En la cuenta usada actualmente: inova-car-290597578821-us-east-1.
+- La cuenta debe proporcionar el instance profile LabInstanceProfile con permiso
+  para que la EC2 liste y lea site/ en el bucket.
+- La identidad local de AWS CLI necesita permiso para publicar objetos en S3 y
+  Terraform necesita permisos para EC2, Security Groups, S3 bucket settings,
+  API Gateway y lectura de identidad/VPC/subredes/AMI.
+- El Learner Lab puede bloquear operaciones mediante SCP o permisos IAM; si eso
+  pasa, el usuario del lab/instructor debe habilitarlas.
+- La VPC predeterminada debe contar con una subred pública IPv4.
+
+Desde la carpeta Terraform Deploy:
+
+   terraform init
+   terraform plan
+   terraform apply
+
+Revisar el plan antes de aceptar. Para publicar frontend y API:
+
+   .\deploy.ps1
+
+El script obtiene la URL del API Gateway, la escribe en JS/api-config.js y sube
+HTML, CSS, JavaScript y API al bucket privado. La EC2 sincroniza los archivos
+desde S3 aproximadamente cada minuto. No publicar api/.env manualmente ni hacer
+el bucket público.
+
+Después de esperar la sincronización, verificar:
+
+   Invoke-WebRequest "$(terraform output -raw api_url)/api/health" -UseBasicParsing
+   terraform output -raw website_url
+
+La respuesta de health esperada incluye status=ok y cache=ready. Para eliminar
+la infraestructura de este proyecto se ofrece .\destroy.ps1; revisar antes, ya
+que elimina recursos AWS.
+
+6. COMPONENTES Y COMPORTAMIENTO
+-------------------------------
+- Navegador: sitio web servido por Nginx en EC2.
+- API Gateway HTTP API: recibe llamadas de inventario y las reenvía a EC2.
+- EC2: ejecuta Nginx, Node.js 22 y Valkey.
+- Valkey: caché local de productos con TTL de 60 segundos; puerto 6379 no
+  expuesto a Internet.
+- Supabase: Auth y PostgreSQL/RLS; fuente de verdad del inventario.
+- S3 privado: distribución de archivos del despliegue a la EC2; no es la base
+  de datos ni atiende las peticiones de los usuarios.
+- API: GET /api/products?table=<tabla>, POST
+  /api/products/update?table=<tabla>, GET /api/health.
+
+El inicio de sesión del frontend usa Supabase Auth. Las operaciones del
+inventario pasan por API Gateway, API Node y luego Valkey/Supabase.
