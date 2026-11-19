@@ -3,6 +3,11 @@ output "website_url" {
   value       = "http://${aws_instance.web.public_ip}"
 }
 
+output "api_url" {
+  description = "Public API Gateway URL for inventory API requests."
+  value       = aws_apigatewayv2_api.inventory.api_endpoint
+}
+
 output "instance_id" {
   description = "EC2 instance serving the website."
   value       = aws_instance.web.id

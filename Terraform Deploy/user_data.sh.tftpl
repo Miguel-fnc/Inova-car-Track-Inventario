@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euxo pipefail
 
-dnf install -y nginx awscli-2 cronie
-mkdir -p /usr/share/nginx/html
+dnf install -y nginx awscli-2 cronie nodejs22 nodejs22-npm valkey
+mkdir -p /usr/share/nginx/html /opt/inova-api /var/lib/inova-api
+chown -R ec2-user:ec2-user /opt/inova-api
 
 cat > /etc/nginx/conf.d/inova.conf <<'NGINX'
 server {
@@ -10,6 +11,15 @@ server {
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 
     location / {
         try_files $uri $uri/ =404;
@@ -19,22 +29,64 @@ NGINX
 
 rm -f /etc/nginx/conf.d/default.conf
 nginx -t
+systemctl enable --now valkey
 systemctl enable --now nginx
 systemctl enable --now crond
 
-# Nginx responde aunque falle la descarga; revisa cloud-init-output.log si no aparece el sitio.
-aws s3 sync "s3://${bucket_name}/site/" /usr/share/nginx/html/ --delete --region "${aws_region}" || echo "Initial S3 sync failed; check /var/log/cloud-init-output.log"
+cat > /etc/systemd/system/inova-api.service <<'SERVICE'
+[Unit]
+Description=Inova Car inventory API
+After=network-online.target valkey.service
+Wants=network-online.target
+ConditionPathExists=/opt/inova-api/server.js
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/inova-api
+EnvironmentFile=/opt/inova-api/.env
+ExecStart=/usr/bin/node /opt/inova-api/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable inova-api
 
 cat > /usr/local/bin/inova-sync-site.sh <<'SYNC'
 #!/bin/bash
 set -euo pipefail
-aws s3 sync "s3://${bucket_name}/site/" /usr/share/nginx/html/ --delete --region "${aws_region}"
+
+exec 9>/var/lock/inova-sync-site.lock
+flock -n 9 || exit 0
+
+aws s3 sync "s3://${bucket_name}/site/" /usr/share/nginx/html/ --delete --exclude "api/*" --region "${aws_region}" || echo "Website sync warning; continuing with API sync."
+aws s3 sync "s3://${bucket_name}/site/api/" /opt/inova-api/ --delete --exclude "node_modules/*" --exclude "package-lock.json" --region "${aws_region}"
+
+if [ -f /opt/inova-api/package.json ] && [ -f /opt/inova-api/server.js ] && [ -f /opt/inova-api/.env ]; then
+  cd /opt/inova-api
+  api_hash="$(sha256sum package.json server.js .env | sha256sum | awk '{print $1}')"
+  previous_hash="$(cat /var/lib/inova-api/deploy-hash 2>/dev/null || true)"
+
+  if [ "$api_hash" != "$previous_hash" ]; then
+    chown -R ec2-user:ec2-user /opt/inova-api
+    sudo -u ec2-user npm install --omit=dev --no-audit --no-fund
+    echo "$api_hash" > /var/lib/inova-api/deploy-hash
+    systemctl restart inova-api
+  fi
+fi
 SYNC
+
 chmod 0755 /usr/local/bin/inova-sync-site.sh
+
+# Nginx inicia aunque todavía no se haya publicado la API en S3.
+/usr/local/bin/inova-sync-site.sh || echo "Initial S3 sync failed; check /var/log/cloud-init-output.log"
 
 cat > /etc/cron.d/inova-site-sync <<'CRON'
 * * * * * root /usr/local/bin/inova-sync-site.sh >> /var/log/inova-site-sync.log 2>&1
 CRON
 chmod 0644 /etc/cron.d/inova-site-sync
 systemctl restart crond
-

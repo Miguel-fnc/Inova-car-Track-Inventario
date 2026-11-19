@@ -77,6 +77,11 @@ data "aws_iam_instance_profile" "lab" {
   name = var.instance_profile_name
 }
 
+# Prefijo administrado por AWS para EC2 Instance Connect en esta región.
+data "aws_ec2_managed_prefix_list" "ec2_instance_connect" {
+  name = "com.amazonaws.${var.aws_region}.ec2-instance-connect"
+}
+
 resource "aws_security_group" "ec2" {
   name        = "${local.common_name}-ec2"
   description = "Public HTTP access for the website EC2"
@@ -98,6 +103,15 @@ resource "aws_vpc_security_group_ingress_rule" "http_public" {
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ssh_from_ec2_instance_connect" {
+  security_group_id = aws_security_group.ec2.id
+  description       = "SSH only from the AWS EC2 Instance Connect service"
+  prefix_list_id    = data.aws_ec2_managed_prefix_list.ec2_instance_connect.id
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
 }
 
 resource "aws_instance" "web" {
@@ -127,6 +141,40 @@ resource "aws_instance" "web" {
     aws_s3_bucket_server_side_encryption_configuration.artifacts,
     aws_vpc_security_group_ingress_rule.http_public
   ]
+}
+
+# API Gateway publica la API y reenvía las rutas completas a Nginx en la EC2.
+resource "aws_apigatewayv2_api" "inventory" {
+  name          = "${local.common_name}-http-api"
+  protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins  = ["http://${aws_instance.web.public_ip}"]
+    allow_methods  = ["GET", "POST", "OPTIONS"]
+    allow_headers  = ["authorization", "content-type"]
+    expose_headers = ["x-cache"]
+    max_age        = 300
+  }
+}
+
+resource "aws_apigatewayv2_integration" "inventory" {
+  api_id                 = aws_apigatewayv2_api.inventory.id
+  integration_type       = "HTTP_PROXY"
+  integration_method     = "ANY"
+  integration_uri        = "http://${aws_instance.web.public_ip}"
+  timeout_milliseconds   = 30000
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.inventory.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.inventory.id}"
+}
+
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.inventory.id
+  name        = "$default"
+  auto_deploy = true
 }
 
 

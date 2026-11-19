@@ -1,13 +1,10 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { cargarProductosConCache, actualizarProductoConApi } from './inventory-cache.js';
 
-const SUPABASE_URL = 'https://kxvedkhwuivbefdgrrzt.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4dmVka2h3dWl2YmVmZGdycnp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMTUzMzgsImV4cCI6MjEwNTU5MTMzOH0.iAn67wdxPf1qB1Q7KWIQd3c1yS5eouS8Av6nv2t3vlw';
 
 
 const email = sessionStorage.getItem('userEmail');
 const emailInput = document.querySelector('#userEmailDisplay');
 const logoutButton = document.querySelector('#logoutBtn');
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const inventoryTableBody = document.querySelector('#inventoryTableBody');
 const resultCount = document.querySelector('#resultCount');
 const searchInput = document.querySelector('#searchInput');
@@ -28,21 +25,15 @@ if (logoutButton){
 }
 
 async function cargarProductos(tabla) {
-  const { data: productos, error } = await supabase
-    .from(tabla)
-    .select('id, marca, codigo, precio, stock');
-    
-  if (error) {
-    console.error(`Error al consultar la tabla ${tabla}:`, error);
-    console.log(`Productos: ${productos}`);
-    inventoryTableBody.innerHTML = '<tr><td colspan="6" class="empty-cell">No se pudo cargar esta línea. Revisa el nombre de la tabla y sus permisos en Supabase.</td></tr>';
+  try {
+    return await cargarProductosConCache(tabla);
+  } catch (error) {
+    console.error("Error al consultar tabla " + tabla + " a través de la API:", error);
+    inventoryTableBody.innerHTML = '<tr><td colspan="6" class="empty-cell">No se pudo cargar esta línea. Revisa la sesión y los permisos en Supabase.</td></tr>';
     resultCount.textContent = 'Error';
     return null;
   }
-
-  return productos ?? [];
 }
-
 async function guardarCambio(input, producto, columna, tabla) {
   const valorAnterior = producto[columna];
   const nuevoValor = input.valueAsNumber;
@@ -56,16 +47,7 @@ async function guardarCambio(input, producto, columna, tabla) {
   input.title = 'Guardando…';
 
   try {
-    const { data, error } = await supabase
-      .from(tabla)
-      .update({ [columna]: nuevoValor })
-      .eq('id', producto.id)
-      .select('id')
-      .single();
-
-    if (error) throw error;
-    if (!data) throw new Error('No se encontró el producto para actualizar.');
-
+    await actualizarProductoConApi(tabla, producto.id, columna, nuevoValor);
     producto[columna] = nuevoValor;
     input.title = 'Guardado';
     input.style.borderColor = '#3fbaa9';

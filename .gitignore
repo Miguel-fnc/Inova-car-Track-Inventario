@@ -2,8 +2,11 @@
 .env
 .env.*
 !.env.example
+/api/.env
 Inovac car Credenciales.txt
 
 # Dependencias y archivos de despliegue local
 node_modules/
+api/node_modules/
+api/package-lock.json
 .vercel/
