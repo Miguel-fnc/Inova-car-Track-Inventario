@@ -29,6 +29,9 @@ const PRODUCT_TABLES = {
   "TAPETES": "id, presentacion, color, piezas, precio, stock"
 };
 
+const INVOICE_TABLE = "facturas";
+const INVOICE_STATUSES = new Set(["creada", "en_progreso", "aprobada"]);
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "16kb" }));
@@ -111,6 +114,35 @@ app.get("/api/health", async (_req, res) => {
     res.json({ status: "ok", cache: "ready" });
   } catch {
     res.status(503).json({ status: "degraded", cache: "unavailable" });
+  }
+});
+
+app.get("/api/invoices", authenticate, async (req, res) => {
+  const status = req.query.status;
+  if (status !== undefined && (typeof status !== "string" || !INVOICE_STATUSES.has(status))) {
+    return res.status(400).json({ error: "El estado solicitado no es válido." });
+  }
+
+  try {
+    const supabase = createUserSupabaseClient(req.accessToken);
+    let query = supabase
+      .from(INVOICE_TABLE)
+      .select("idfactura, status, created_at")
+      .order("created_at", { ascending: false });
+
+    if (status) query = query.eq("status", status);
+
+    const { data: invoices, error } = await query;
+    if (error) {
+      console.error("Error al consultar facturas en Supabase:", error.message);
+      return res.status(502).json({ error: "No se pudieron consultar las facturas." });
+    }
+
+    res.set("Cache-Control", "no-store");
+    return res.json({ invoices: invoices || [] });
+  } catch (error) {
+    console.error("Error inesperado al consultar facturas:", error.message);
+    return res.status(500).json({ error: "Ocurrió un error al consultar las facturas." });
   }
 });
 

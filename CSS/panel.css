@@ -661,6 +661,63 @@ tbody tr:last-child td {
     color:#8c9aa4;
     text-align:center
 }
+.invoice-table {
+    min-width:560px
+}
+.invoice-id {
+    color:#2b4356;
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    font-size:11px;
+    font-weight:600
+}
+.invoice-date {
+    color:#718291;
+    white-space:nowrap
+}
+.invoice-status {
+    display:inline-flex;
+    align-items:center;
+    padding:5px 9px;
+    border:1px solid #e5ebef;
+    border-radius:999px;
+    color:#657986;
+    background:#f7f9fa;
+    font-size:9px;
+    font-weight:700;
+    white-space:nowrap
+}
+.invoice-status.status-creada {
+    border-color:#dce7f2;
+    color:#537697;
+    background:#f1f6fb
+}
+.invoice-status.status-en_progreso {
+    border-color:#f1e2c4;
+    color:#a77a2d;
+    background:#fdf9ef
+}
+.invoice-status.status-aprobada {
+    border-color:#dcefe7;
+    color:#43826c;
+    background:#f4fbf7
+}
+#refreshInvoicesButton:disabled {
+    cursor:wait;
+    opacity:.65
+}
+#refreshInvoicesButton {
+    padding:10px 20px;
+    border:0;
+    margin-bottom:20px;
+    border-radius:5px;
+    color:white;
+    background:#3fba89;
+    font-size:14px
+}
+#refreshInvoicesButton:hover:not(:disabled) {
+    background:#226a54;
+    transform:scale(1.03)
+}
 .spinner {
     display:inline-block;
     width:14px;

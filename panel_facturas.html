@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#102b46">
+    <meta name="description" content="Consulta el estado de las facturas de Inova Car.">
+    <title>Facturas | Inova Car</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="CSS/panel.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body data-panel="facturas">
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="index.html" aria-label="Inova Car, inicio">
+          <span class="brand-mark"><i data-lucide="car-front"></i></span>
+          <span class="brand-word">inova<span>car</span></span>
+        </a>
+        <div class="side-caption">MENÚ PRINCIPAL</div>
+        <nav class="category-nav" id="categoryNav" aria-label="Categorías de inventario">
+          <a class="nav-item" href="panel_control_mobil.html"><i data-lucide="droplets"></i><span>Aceites Mobil</span><span class="nav-count">5</span></a>
+          <a class="nav-item" href="panel_control_castrol.html"><i data-lucide="droplets"></i><span>Aceites Castrol</span><span class="nav-count">3</span></a>
+          <a class="nav-item" href="panel_control_rooshfran.html"><i data-lucide="droplets"></i><span>Aceites Roshfrans</span></a>
+          <div class="nav-divider"></div>
+          <a class="nav-item" href="panel_control_limpiparabrisas.html"><i data-lucide="wind"></i><span>Limpiaparabrisas</span></a>
+          <a class="nav-item" href="panel_control_filtros.html"><i data-lucide="layers-3"></i><span>Filtros</span></a>
+          <a class="nav-item" href="panel_control_bujias.html"><i data-lucide="zap"></i><span>Bujías</span></a>
+          <a class="nav-item" href="panel_control_cubrevolantes.html"><i data-lucide="circle"></i><span>Cubrevolantes</span></a>
+          <a class="nav-item" href="panel_control_tapetes.html"><i data-lucide="grid-2x2"></i><span>Tapetes</span></a>
+          <div class="nav-divider"></div>
+          <a class="nav-item active" href="panel_facturas.html" aria-current="page"><i data-lucide="receipt-text"></i><span>Facturas</span></a>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="sidebar-foot"><span class="online-dot"></span> Sistema de inventario</div>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <button class="menu-toggle" id="menuToggle" aria-label="Abrir menú"><i data-lucide="menu"></i></button>
+          <div class="breadcrumbs">
+            <span>Administración</span><i data-lucide="chevron-right"></i><strong>Facturas</strong>
+          </div>
+          <div class="topbar-actions">
+            <div class="account-chip">
+              <span class="avatar"><i data-lucide="mail"></i></span>
+              <span class="account-email" id="userEmailDisplay">Cargando cuenta</span>
+            </div>
+            <button id="logoutBtn" class="logout-button"><i data-lucide="log-out"></i><span>Cerrar sesión</span></button>
+          </div>
+        </header>
+
+        <div class="content-wrap">
+          <section class="page-heading">
+            <div>
+              <p class="kicker">INOVA CAR <span>·</span> ADMINISTRACIÓN</p>
+              <h1>Facturas</h1>
+              <p class="page-subtitle">Consulta las facturas recibidas y el estado de su validación. Se actualiza cada 30 segundos.</p>
+            </div>
+            <div class="updated-chip"><span class="online-dot"></span> Estado en línea</div>
+          </section>
+
+          <section class="inventory-card" aria-labelledby="tableTitle">
+            <div class="table-heading">
+              <div>
+                <div class="table-title-row">
+                  <span class="table-title-icon"><i data-lucide="receipt-text"></i></span>
+                  <h2 id="tableTitle">Facturas recibidas</h2>
+                  <span class="result-count" id="resultCount">—</span>
+                </div>
+                <p>Filtra por estado o busca por identificador.</p>
+              </div>
+              <div class="inventory-controls">
+                <label class="line-filter" for="statusFilter">
+                  <span class="sr-only">Filtrar por estado</span>
+                  <select id="statusFilter" name="status">
+                    <option value="">Todos los estados</option>
+                    <option value="creada">Creada</option>
+                    <option value="en_progreso">En progreso</option>
+                    <option value="aprobada">Aprobada</option>
+                  </select>
+                </label>
+                <label class="search-box">
+                  <i data-lucide="search"></i>
+                  <span class="sr-only">Buscar factura por identificador</span>
+                  <input id="searchInput" type="search" placeholder="Buscar por ID de factura…" autocomplete="off">
+                </label>
+              </div>
+            </div>
+
+            <div class="table-scroll">
+              <table class="invoice-table">
+                <thead>
+                  <tr>
+                    <th>ID factura</th>
+                    <th>Estado</th>
+                    <th>Fecha de creación</th>
+                  </tr>
+                </thead>
+                <tbody id="invoiceTableBody">
+                  <tr><td colspan="3" class="loading-cell">Cargando facturas…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="submit-button">
+              <button id="refreshInvoicesButton" type="button">Actualizar</button>
+            </div>
+          </section>
+
+          <footer class="page-footer">© 2026 Inova Car <span></span> Hecho para llevar tu negocio en orden.</footer>
+        </div>
+      </main>
+    </div>
+    <div class="sidebar-scrim" id="sidebarScrim"></div>
+    <script type="module" src="JS/panel_facturas.js"></script>
+  </body>
+</html>

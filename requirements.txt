@@ -57,7 +57,9 @@ CSS y JavaScript nativo. Las dependencias de Node están declaradas en api/packa
   configurar políticas RLS de lectura y actualización para cada tabla.
 - El correo y contraseña se gestionan en Supabase Auth; no guardar contraseñas
   de usuarios en una tabla propia.
-- Las rutas de facturas aún no están implementadas.
+- Crear la tabla facturas con idfactura (uuid), status (text) y created_at
+  (timestamptz). Valores de status: creada, en_progreso, aprobada. Dar permisos
+  SELECT a authenticated y definir políticas RLS de lectura.
 
 4. EJECUCIÓN LOCAL DE LA API (OPCIONAL)
 ---------------------------------------

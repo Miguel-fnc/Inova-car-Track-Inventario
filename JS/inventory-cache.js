@@ -55,3 +55,19 @@ export async function actualizarProductoConApi(table, id, field, value) {
   return result;
 }
 
+export async function cargarFacturasConApi(status = "") {
+  const token = await getAccessToken();
+  const query = status ? "?status=" + encodeURIComponent(status) : "";
+  const response = await fetch(API_BASE_URL + "/api/invoices" + query, {
+    headers: { Authorization: "Bearer " + token },
+    cache: "no-store"
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron cargar las facturas.");
+  }
+
+  return result.invoices || [];
+}
+
