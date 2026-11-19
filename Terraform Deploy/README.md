@@ -14,9 +14,10 @@ La API valida la sesión con Supabase Auth y lee o actualiza las tablas con el t
 
 - `GET /api/products?table=<tabla>`: lee inventario desde la caché Valkey o Supabase.
 - `POST /api/products/update?table=<tabla>`: recibe `{ "id": "...", "field": "stock" | "precio", "value": 0 }`, actualiza Supabase y luego invalida la caché de esa tabla y usuario.
+- `GET /api/invoices?status=<estado>`: consulta `facturas` por estado. Estados permitidos: `creada`, `en_progreso` y `aprobada`.
 - `GET /api/health`: estado de la API y Valkey.
 
-La tabla debe estar en la lista permitida de la API y el usuario debe tener permisos RLS en Supabase. Las rutas de facturas todavía no están implementadas.
+Las tablas de productos deben estar en la lista permitida de la API y el usuario debe tener permisos RLS en Supabase. La tabla `facturas` debe tener `idfactura`, `status` y `created_at`, y permisos SELECT para el usuario autenticado. Usa `creada`, `en_progreso` o `aprobada` como valores de `status`; el panel actualiza la lista cada 30 segundos.
 
 ## Requisitos del Learner Lab
 
