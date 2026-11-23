@@ -30,7 +30,7 @@ const PRODUCT_TABLES = {
 };
 
 const INVOICE_TABLE = "facturas";
-const INVOICE_STATUSES = new Set(["creada", "en_progreso", "aprobada"]);
+const INVOICE_STATUSES = new Set(["creada", "en_progreso", "aprobada", "rechazada"]);
 
 const app = express();
 app.disable("x-powered-by");
@@ -117,6 +117,11 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
+// Target group health check: verifies that the Node process is serving requests.
+app.get("/api/live", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.get("/api/invoices", authenticate, async (req, res) => {
   const status = req.query.status;
   if (status !== undefined && (typeof status !== "string" || !INVOICE_STATUSES.has(status))) {
@@ -127,10 +132,10 @@ app.get("/api/invoices", authenticate, async (req, res) => {
     const supabase = createUserSupabaseClient(req.accessToken);
     let query = supabase
       .from(INVOICE_TABLE)
-      .select("idfactura, status, created_at")
+      .select("idfactura:id, status:estatus, created_at")
       .order("created_at", { ascending: false });
 
-    if (status) query = query.eq("status", status);
+    if (status) query = query.eq("estatus", status);
 
     const { data: invoices, error } = await query;
     if (error) {

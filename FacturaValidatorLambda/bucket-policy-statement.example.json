@@ -1,0 +1,9 @@
+{
+  "Sid": "AllowInovaInvoiceLambdaReadPendingObjects",
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::290597578821:role/LabRole"
+  },
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::invoices-inovacar/pendientes/*"
+}

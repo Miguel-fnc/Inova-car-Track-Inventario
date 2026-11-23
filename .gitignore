@@ -9,4 +9,7 @@ Inovac car Credenciales.txt
 node_modules/
 api/node_modules/
 api/package-lock.json
+FacturaValidatorLambda/package/
+FacturaValidatorLambda/lambda_function.zip
+FacturaValidatorLambda/lambda-environment.tmp.json
 .vercel/

@@ -1,20 +1,29 @@
 output "website_url" {
-  description = "Public website URL served directly by Nginx on the EC2 instance."
-  value       = "http://${aws_instance.web.public_ip}"
+  description = "Public website URL served by Nginx through the internet-facing ALB."
+  value       = "http://${aws_lb.app.dns_name}"
 }
 
 output "api_url" {
-  description = "Public API Gateway URL for inventory API requests."
+  description = "Public API Gateway URL forwarding requests to the ALB and Auto Scaling Group."
   value       = aws_apigatewayv2_api.inventory.api_endpoint
 }
 
-output "instance_id" {
-  description = "EC2 instance serving the website."
-  value       = aws_instance.web.id
+output "autoscaling_group_name" {
+  description = "Auto Scaling Group name for the application instances."
+  value       = aws_autoscaling_group.app.name
+}
+
+output "application_alb_dns_name" {
+  description = "Public Application Load Balancer DNS name serving the site and API."
+  value       = aws_lb.app.dns_name
+}
+
+output "cache_endpoint" {
+  description = "Private shared Valkey endpoint used by the application instances."
+  value       = aws_elasticache_replication_group.cache.primary_endpoint_address
 }
 
 output "s3_artifact_bucket" {
-  description = "Existing private bucket where deploy.ps1 uploads the site."
+  description = "Pre-existing private bucket used for site and API files."
   value       = data.aws_s3_bucket.artifacts.bucket
 }
-

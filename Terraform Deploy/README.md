@@ -1,76 +1,86 @@
-# Inova Car: EC2 pública, API y caché Redis-compatible
+# Inova Car: sitio y API con escalado horizontal
 
 ## Arquitectura
 
-Navegador -> API Gateway HTTP API -> Nginx/Node.js en EC2 -> Valkey local y Supabase.
+```text
+Navegador -> ALB público -> EC2 del Auto Scaling Group -> Nginx (web) / Node.js (API)
+Navegador -> API Gateway -> ALB público -> EC2 del Auto Scaling Group -> Valkey -> Supabase
+                                      EC2 <- bucket S3 privado (archivos del sitio y API)
+```
 
-La página estática se sirve desde Nginx en la EC2. Las lecturas y actualizaciones del inventario pasan por API Gateway hacia la API Node.js. API Gateway reenvía las rutas completas `/api/...` a la EC2. El bucket S3 privado distribuye los archivos a la EC2; no participa en las peticiones del navegador.
+El bucket privado existente entrega el código a las EC2; Nginx sirve los archivos estáticos desde cada instancia. El ALB público distribuye el sitio y las llamadas directas hacia las EC2 saludables. El frontend usa API Gateway para sus llamadas a la API; el API Gateway también reenvía al mismo ALB. Las EC2 comparten Valkey para que la caché funcione entre instancias.
 
-Valkey implementa el protocolo compatible con Redis y se ejecuta únicamente en localhost dentro de la EC2. El puerto 6379 no se publica a internet. Las lecturas de productos usan una caché por usuario y tabla con TTL de 60 segundos. La primera lectura devuelve MISS y consulta Supabase; las lecturas siguientes devuelven HIT hasta que expire o cambie el inventario. Después de guardar un precio o stock, la aplicación invalida la versión de caché de esa tabla.
+El ALB es público porque entrega la página directamente. En esta arquitectura sencilla las rutas `/api/...` también son alcanzables a través del DNS del ALB. La API debe seguir verificando la sesión de Supabase y aplicando RLS. Para producción convendría separar y restringir el origen del backend.
 
-La API valida la sesión con Supabase Auth y lee o actualiza las tablas con el token del usuario, de modo que Supabase RLS continúa aplicándose. No se utiliza la clave service_role. El inicio de sesión sigue usando Supabase Auth desde el navegador.
+El ASG inicia con 2 instancias `t3.micro`, mínimo 2 y máximo 4, repartidas en `us-east-1c` y `us-east-1f`. La política target tracking procura mantener el CPU promedio cerca de 50%. El intervalo de un minuto sincroniza despliegues desde S3, no es el mecanismo de escalado.
 
-## Rutas implementadas
+## Learner Lab y costos
 
-- `GET /api/products?table=<tabla>`: lee inventario desde la caché Valkey o Supabase.
-- `POST /api/products/update?table=<tabla>`: recibe `{ "id": "...", "field": "stock" | "precio", "value": 0 }`, actualiza Supabase y luego invalida la caché de esa tabla y usuario.
-- `GET /api/invoices?status=<estado>`: consulta `facturas` por estado. Estados permitidos: `creada`, `en_progreso` y `aprobada`.
-- `GET /api/health`: estado de la API y Valkey.
+Se crean instancias EC2, ALB, API Gateway y ElastiCache; estos recursos pueden consumir los créditos del laboratorio. Para reducir costos puedes aplicar con una instancia y un nodo de caché:
 
-Las tablas de productos deben estar en la lista permitida de la API y el usuario debe tener permisos RLS en Supabase. La tabla `facturas` debe tener `idfactura`, `status` y `created_at`, y permisos SELECT para el usuario autenticado. Usa `creada`, `en_progreso` o `aprobada` como valores de `status`; el panel actualiza la lista cada 30 segundos.
+```powershell
+terraform plan -var="asg_min_size=1" -var="asg_desired_capacity=1" -var="asg_max_size=2" -var="cache_node_count=1"
+terraform apply -var="asg_min_size=1" -var="asg_desired_capacity=1" -var="asg_max_size=2" -var="cache_node_count=1"
+```
 
-## Requisitos del Learner Lab
+Un nodo Valkey no tiene failover Multi-AZ. El lab puede denegar recursos según sus políticas IAM/SCP. Este diseño no requiere VPC Link ni CloudFront.
 
-- Debe existir el bucket inova-car-<ID-de-cuenta>-us-east-1.
-- El perfil LabInstanceProfile debe poder leer el prefijo site/* del bucket.
-- Para publicar desde tu computadora, AWS CLI necesita permiso para subir objetos al bucket.
-- La VPC predeterminada debe tener una subred pública con asignación de IPv4 pública.
-- api/.env debe existir en el proyecto. deploy.ps1 lo sube al prefijo privado site/api/.env. El bucket mantiene el bloqueo de acceso público.
+## Supabase
 
-## Conectarse a la EC2 para revisar logs
+- `api/.env` debe tener `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `PORT` y `REDIS_URL`.
+- `deploy.ps1` carga `.env` en el prefijo privado `site/api/` del bucket de artefactos. La credencial `service_role` no debe usarse.
+- En cada EC2, el script de inicio reemplaza `REDIS_URL` por el endpoint de Valkey compartido.
+- `/api/live` sirve como health check del target group; `/api/health` también revisa Valkey.
 
-Terraform permite SSH por el puerto 22 únicamente desde el prefijo administrado por AWS para EC2 Instance Connect. Después de aplicar el cambio, abre EC2 > Instances, selecciona la instancia y elige Connect > EC2 Instance Connect > Connect using a Public IP. Usa el usuario ec2-user. La consola envía una llave temporal; no necesitas crear ni descargar una llave privada.
+## Rutas API
+
+- `GET /api/products?table=<tabla>`: caché Valkey con TTL de 60 segundos y Supabase como fuente de verdad.
+- `POST /api/products/update?table=<tabla>`: actualiza precio/stock y cambia la versión de caché.
+- `GET /api/invoices?status=<estado>`: consulta facturas en Supabase.
+- `GET /api/health` y `GET /api/live`.
+
+El procesamiento SQS/Lambda para Telegram queda fuera de este despliegue.
+
 ## Despliegue
 
-Desde PowerShell, en esta carpeta:
+Requisitos: Terraform >= 1.5, AWS CLI v2, PowerShell, credenciales temporales del AWS Academy Learner Lab, bucket privado existente `inova-car-<ID-de-cuenta>-us-east-1` y `LabInstanceProfile` con permiso de lectura en ese bucket. AWS CLI debe poder escribir en el mismo bucket.
 
-    terraform plan
-    terraform apply
+Desde la carpeta `Terraform Deploy`:
 
-Después sube el frontend y la API; el script configura el frontend con la URL del API Gateway:
+```powershell
+terraform init
+terraform plan
+terraform apply
+.\deploy.ps1
+```
 
-    .\deploy.ps1
+Revisa el plan antes de aplicar. El cambio reemplaza la EC2 independiente previa con un ASG y crea un ALB público, API Gateway y Valkey. El script sube el sitio a `site/` y la API/`.env` a `site/api/`. Las instancias sincronizan ambos prefijos desde S3 aproximadamente cada minuto.
 
-La EC2 descarga los archivos desde S3 aproximadamente cada minuto. En el primer despliegue, espera un minuto y comprueba el API pasando por API Gateway:
+Prueba la API:
 
-    Invoke-WebRequest "$(terraform output -raw api_url)/api/health"
+```powershell
+Invoke-WebRequest "$(terraform output -raw api_url)/api/health" -UseBasicParsing
+```
 
-La respuesta esperada es JSON con status igual a ok y cache igual a ready. Después abre la URL del sitio:
+Obtén las direcciones:
 
-    terraform output -raw website_url
+```powershell
+terraform output -raw website_url
+terraform output -raw api_url
+```
 
-La URL pública del API Gateway se consulta con:
+Si Supabase Auth valida Redirect URLs, agrega `website_url` a la lista permitida.
 
-    terraform output -raw api_url
+## Escalado y seguridad
 
-## Verificar HIT y MISS
+- El ASG mantiene instancias en varias AZ y puede crecer hasta el máximo configurado según CPU.
+- El ALB verifica `/api/live` y solo envía tráfico a instancias saludables.
+- El bucket S3 permanece privado. El perfil de instancia permite que EC2 lea los archivos.
+- El Security Group de EC2 acepta HTTP desde el ALB; Valkey acepta conexiones solo desde EC2.
+- Las EC2 tienen IP pública para conectarse a S3, Supabase y servicios externos en la VPC por defecto.
+- Valkey cifra datos en reposo; el cifrado en tránsito está deshabilitado por simplicidad del lab.
+- La disponibilidad del inventario aún depende de Supabase.
+- Para revisar el ASG: EC2 > Auto Scaling Groups, o `terraform output -raw autoscaling_group_name`.
+- Para comprobar caché, las respuestas de productos muestran `X-Cache: MISS` al cargar y `HIT` durante los siguientes 60 segundos.
 
-1. Inicia sesión y abre un panel de productos.
-2. En las herramientas del navegador, pestaña Network, abre la solicitud GET de API Gateway a `/api/products?table=...`.
-3. La primera lectura debe responder con la cabecera X-Cache: MISS.
-4. Recarga el mismo panel dentro de los siguientes 60 segundos: debe responder X-Cache: HIT.
-5. Al guardar un cambio de stock o precio, la aplicación invalida la caché de esa tabla; la siguiente lectura debe volver a ser MISS.
-
-El TTL es de 60 segundos. Si Redis-compatible cache no está disponible, la API consulta Supabase y responde con X-Cache: BYPASS.
-
-## Límites de esta configuración
-
-Valkey corre en la misma EC2 que la API, así que la caché es privada y sencilla para el Learner Lab. Al reiniciar la instancia, se puede vaciar. Si en el futuro agregas más EC2, cada una tendría su propia caché; para compartirla habría que migrar a un servicio compartido como ElastiCache y habilitar la conectividad entre instancias.
-
-El sitio usa HTTP. Para producción, configura HTTPS y un dominio.
-
-## Eliminar los recursos de este Terraform
-
-    .\destroy.ps1
-
-Esto destruye la EC2, API Gateway y el security group. El bucket preexistente y los archivos publicados permanecen.
+Para eliminar recursos, revisa el script y el plan antes de ejecutar `.\destroy.ps1`. El bucket preexistente de artefactos no es administrado ni eliminado por Terraform.

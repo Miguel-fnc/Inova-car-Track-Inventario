@@ -701,6 +701,11 @@ tbody tr:last-child td {
     color:#43826c;
     background:#f4fbf7
 }
+.invoice-status.status-rechazada {
+    border-color:#f2d7d7;
+    color:#a64b4b;
+    background:#fff5f5
+}
 #refreshInvoicesButton:disabled {
     cursor:wait;
     opacity:.65

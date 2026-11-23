@@ -35,7 +35,8 @@ function etiquetaEstado(status = '') {
   const etiquetas = {
     creada: 'Creada',
     en_progreso: 'En progreso',
-    aprobada: 'Aprobada'
+    aprobada: 'Aprobada',
+    rechazada: 'Rechazada'
   };
   return etiquetas[estado] || status || 'Sin estado';
 }

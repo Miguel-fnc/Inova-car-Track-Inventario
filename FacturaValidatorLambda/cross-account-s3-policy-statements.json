@@ -1,0 +1,50 @@
+[
+  {
+    "Sid": "AllowInovaLambdaReadPendingInvoices",
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::290597578821:role/LabRole"
+    },
+    "Action": "s3:GetObject",
+    "Resource": "arn:aws:s3:::invoices-inovacar/pendientes/*"
+  },
+  {
+    "Sid": "AllowInovaLambdaCheckInvoiceArchiveKeys",
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::290597578821:role/LabRole"
+    },
+    "Action": "s3:ListBucket",
+    "Resource": "arn:aws:s3:::invoices-inovacar",
+    "Condition": {
+      "StringLike": {
+        "s3:prefix": [
+          "pendientes/*",
+          "aprobadas/*",
+          "rechazadas/*"
+        ]
+      }
+    }
+  },
+  {
+    "Sid": "AllowInovaLambdaArchiveInvoicePdfs",
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::290597578821:role/LabRole"
+    },
+    "Action": "s3:PutObject",
+    "Resource": [
+      "arn:aws:s3:::invoices-inovacar/aprobadas/*",
+      "arn:aws:s3:::invoices-inovacar/rechazadas/*"
+    ]
+  },
+  {
+    "Sid": "AllowInovaLambdaRemovePendingInvoicePdfs",
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::290597578821:role/LabRole"
+    },
+    "Action": "s3:DeleteObject",
+    "Resource": "arn:aws:s3:::invoices-inovacar/pendientes/*"
+  }
+]

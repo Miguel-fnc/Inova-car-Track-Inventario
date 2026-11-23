@@ -11,11 +11,12 @@ un archivo de dependencias de Python y no se instala con pip.
 - Terraform >= 1.5.0, para crear la infraestructura.
 - AWS CLI v2, para publicar los archivos en S3 y consultar AWS.
 - PowerShell 7 recomendado (Windows PowerShell 5.1 también puede servir).
-- Docker Desktop, opcional, para correr Valkey localmente en Windows.
+- Python 3.12 o posterior, solo para empaquetar la Lambda de validación (no se requiere Docker).
 - Acceso al proyecto de Supabase y al AWS Academy Learner Lab usados por Inova Car.
 
-No se requiere Python ni instalar dependencias de frontend: el sitio usa HTML,
-CSS y JavaScript nativo. Las dependencias de Node están declaradas en api/package.json.
+No se requiere Python para el frontend ni la API: el sitio usa HTML, CSS y
+JavaScript nativo. Python solo se usa para empaquetar la Lambda. Las dependencias
+de Node están declaradas en api/package.json.
 
 2. DESCARGAR Y PREPARAR EL PROYECTO
 -----------------------------------
@@ -97,13 +98,18 @@ esos archivos también y crear las tablas y políticas necesarias.
   inova-car-<ID-de-cuenta-AWS>-us-east-1
   En la cuenta usada actualmente: inova-car-290597578821-us-east-1.
 - La cuenta debe proporcionar el instance profile LabInstanceProfile con permiso
-  para que la EC2 liste y lea site/ en el bucket.
-- La identidad local de AWS CLI necesita permiso para publicar objetos en S3 y
-  Terraform necesita permisos para EC2, Security Groups, S3 bucket settings,
-  API Gateway y lectura de identidad/VPC/subredes/AMI.
+  para que las EC2 del ASG listen y lean site/api/ en el bucket de artefactos.
+- Terraform necesita permisos para EC2/Launch Templates/Auto Scaling, ALB,
+  Security Groups, ElastiCache, API Gateway, S3 y lectura
+  de identidad/VPC/subredes/AMI.
+- La identidad local de AWS CLI necesita permiso de escritura al bucket privado
+  de artefactos. Terraform no crea bucket frontend ni recursos CloudFront.
 - El Learner Lab puede bloquear operaciones mediante SCP o permisos IAM; si eso
   pasa, el usuario del lab/instructor debe habilitarlas.
-- La VPC predeterminada debe contar con una subred pública IPv4.
+- La VPC predeterminada debe contar con subredes públicas en us-east-1c y
+  us-east-1f para el ALB público y las EC2.
+- Terraform crea dos EC2 por defecto y dos nodos Valkey Multi-AZ. Se puede
+  reducir el costo pasando las variables indicadas en Terraform Deploy/README.md.
 
 Desde la carpeta Terraform Deploy:
 
@@ -111,14 +117,14 @@ Desde la carpeta Terraform Deploy:
    terraform plan
    terraform apply
 
-Revisar el plan antes de aceptar. Para publicar frontend y API:
+Revisar el plan antes de aceptar. Para publicar el sitio y la API:
 
    .\deploy.ps1
 
 El script obtiene la URL del API Gateway, la escribe en JS/api-config.js y sube
-HTML, CSS, JavaScript y API al bucket privado. La EC2 sincroniza los archivos
-desde S3 aproximadamente cada minuto. No publicar api/.env manualmente ni hacer
-el bucket público.
+HTML, CSS, JavaScript, API y api/.env al bucket privado de artefactos. Cada EC2
+sincroniza los archivos desde S3 aproximadamente cada minuto. No hacer público
+el bucket.
 
 Después de esperar la sincronización, verificar:
 
@@ -131,16 +137,17 @@ que elimina recursos AWS.
 
 6. COMPONENTES Y COMPORTAMIENTO
 -------------------------------
-- Navegador: sitio web servido por Nginx en EC2.
-- API Gateway HTTP API: recibe llamadas de inventario y las reenvía a EC2.
-- EC2: ejecuta Nginx, Node.js 22 y Valkey.
-- Valkey: caché local de productos con TTL de 60 segundos; puerto 6379 no
-  expuesto a Internet.
+- Navegador: sitio estático servido por Nginx en una EC2 saludable.
+- ALB público: entrega el sitio y distribuye solicitudes hacia las EC2.
+- API Gateway HTTP API: recibe llamadas del frontend y las reenvía al ALB.
+- Auto Scaling Group: ejecuta Nginx/Node.js 22 en varias AZ; escala con CPU.
+- ElastiCache Valkey: caché compartida de productos con TTL de 60 segundos;
+  solo acepta conexiones de las EC2.
 - Supabase: Auth y PostgreSQL/RLS; fuente de verdad del inventario.
-- S3 privado: distribución de archivos del despliegue a la EC2; no es la base
-  de datos ni atiende las peticiones de los usuarios.
-- API: GET /api/products?table=<tabla>, POST
-  /api/products/update?table=<tabla>, GET /api/health.
+- S3 de artefactos: distribución del backend a las EC2. S3 no es la base de
+  datos del inventario.
+- API: GET /api/products, POST /api/products/update, GET /api/invoices,
+  GET /api/health y GET /api/live.
 
 El inicio de sesión del frontend usa Supabase Auth. Las operaciones del
 inventario pasan por API Gateway, API Node y luego Valkey/Supabase.
