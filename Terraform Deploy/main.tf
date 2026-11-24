@@ -232,6 +232,11 @@ resource "aws_launch_template" "app" {
     name = data.aws_iam_instance_profile.lab.name
   }
 
+  # 1-minute CPU metrics so the 60s target-tracking alarms react quickly.
+  monitoring {
+    enabled = true
+  }
+
   network_interfaces {
     associate_public_ip_address = true
     device_index                = 0
@@ -269,6 +274,15 @@ resource "aws_autoscaling_group" "app" {
   health_check_type         = "ELB"
   health_check_grace_period = 300
   wait_for_capacity_timeout = "15m"
+
+  # Publish group size to CloudWatch every minute so Grafana can chart scaling.
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupTerminatingInstances",
+  ]
 
   launch_template {
     id      = aws_launch_template.app.id
@@ -335,4 +349,13 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.inventory.id
   name        = "$default"
   auto_deploy = true
+}
+
+# The API Gateway URL changes every time the lab is recreated. Publish the
+# frontend config on every apply so the site never points to a deleted API.
+# Content must match what deploy.ps1 writes so both stay in sync.
+resource "aws_s3_object" "api_config" {
+  bucket  = data.aws_s3_bucket.artifacts.bucket
+  key     = "site/JS/api-config.js"
+  content = "// Generado por Terraform Deploy/deploy.ps1.\nexport const API_BASE_URL = \"${aws_apigatewayv2_api.inventory.api_endpoint}\";\n"
 }

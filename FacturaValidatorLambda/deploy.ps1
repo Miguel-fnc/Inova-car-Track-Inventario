@@ -1,23 +1,67 @@
+﻿# Todo lo que depende de la cuenta (rol, secretos, topic) se detecta solo, así
+# el mismo comando sirve en cualquier Learner Lab. Puedes pasar los ARN a mano
+# si usas nombres distintos.
 param(
-  [Parameter(Mandatory = $true)] [string] $ExecutionRoleArn,
-  [Parameter(Mandatory = $true)] [string] $SupabaseUrl,
-  [Parameter(Mandatory = $true)] [string] $SupabaseSecretArn,
-  [Parameter(Mandatory = $true)] [string] $SnsTopicArn,
-  [string] $TelegramTokenSecretArn = "arn:aws:secretsmanager:us-east-1:290597578821:secret:TELEGRAM_TOKEN-xZI1DB",
+  [string] $ExecutionRoleArn = "",
+  [string] $SupabaseUrl = "https://kxvedkhwuivbefdgrrzt.supabase.co",
+  [string] $SupabaseSecretArn = "",
+  [string] $SnsTopicArn = "",
+  [string] $TelegramTokenSecretArn = "",
+  [string[]] $SupabaseSecretName = @("SUPABASE_SECRET_KEY", "Supabase_secret"),
+  [string] $TelegramSecretName = "TELEGRAM_TOKEN",
+  [string] $SnsTopicName = "inova-invoice-notifications",
   [string] $TelegramChatId = "8026924629",
   [string] $ExpectedReceiverRfc = "",
+  [ValidateRange(0, 40)] [int] $ProcessingDelaySeconds = 0,
   [string] $FunctionName = "inova-validar-facturas",
   [string] $QueueArn = "arn:aws:sqs:us-east-1:563105261074:facturas-pendientes",
   [string] $Region = "us-east-1"
 )
 
-$ErrorActionPreference = "Stop"
+# "Continue": in Windows PowerShell 5.1, "Stop" turns any aws CLI stderr output
+# (e.g. "function not found" on first deploy) into a terminating error even
+# when redirected. Every aws call below checks $LASTEXITCODE explicitly.
+$ErrorActionPreference = "Continue"
 $Package = Join-Path $PSScriptRoot "lambda_function.zip"
 $EnvironmentFile = Join-Path $PSScriptRoot "lambda-environment.tmp.json"
 
 if (-not (Test-Path -LiteralPath $Package)) {
   throw "No existe lambda_function.zip. Ejecuta .\build.ps1 primero."
 }
+
+$Account = aws sts get-caller-identity --query Account --output text --region $Region
+if ($LASTEXITCODE -ne 0 -or -not $Account) { throw "No se pudo verificar la cuenta AWS activa. Actualiza ~/.aws/credentials." }
+Write-Host "Cuenta activa: $Account"
+
+if (-not $ExecutionRoleArn) { $ExecutionRoleArn = "arn:aws:iam::${Account}:role/LabRole" }
+
+if (-not $SupabaseSecretArn) {
+  # Accept either name; earlier labs used both.
+  foreach ($name in $SupabaseSecretName) {
+    $SupabaseSecretArn = aws secretsmanager describe-secret --secret-id $name --query ARN --output text --region $Region 2>$null
+    if ($LASTEXITCODE -eq 0 -and $SupabaseSecretArn) { break }
+    $SupabaseSecretArn = ""
+  }
+  if (-not $SupabaseSecretArn) { throw "No existe ningún secreto de Supabase ($($SupabaseSecretName -join ' o ')). Créalo con .\setup-new-lab.ps1." }
+}
+
+if (-not $TelegramTokenSecretArn) {
+  $TelegramTokenSecretArn = aws secretsmanager describe-secret --secret-id $TelegramSecretName --query ARN --output text --region $Region 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    $TelegramTokenSecretArn = ""
+    Write-Warning "No existe el secreto '$TelegramSecretName'; la Lambda funcionará sin avisos de Telegram."
+  }
+}
+
+if (-not $SnsTopicArn) {
+  # create-topic es idempotente: devuelve el ARN si el topic ya existe.
+  $SnsTopicArn = aws sns create-topic --name $SnsTopicName --query TopicArn --output text --region $Region
+  if ($LASTEXITCODE -ne 0 -or -not $SnsTopicArn) { throw "No se pudo obtener el topic SNS '$SnsTopicName'." }
+}
+
+Write-Host "Rol: $ExecutionRoleArn"
+Write-Host "Secreto Supabase: $SupabaseSecretArn"
+Write-Host "Topic SNS: $SnsTopicArn"
 
 $variables = @{
   SUPABASE_URL = $SupabaseUrl.TrimEnd('/')
@@ -28,6 +72,7 @@ $variables = @{
   S3_BUCKET_ALLOWED = "invoices-inovacar"
   S3_KEY_PREFIX = "pendientes/"
   INVOICE_TABLE = "facturas"
+  PROCESSING_DELAY_SECONDS = "$ProcessingDelaySeconds"
 }
 if (-not [string]::IsNullOrWhiteSpace($ExpectedReceiverRfc)) {
   $variables.EXPECTED_RFC_RECEPTOR = $ExpectedReceiverRfc
@@ -60,7 +105,7 @@ try {
 
   if ([string]::IsNullOrWhiteSpace($mappingUuid) -or $mappingUuid -eq "None") {
     aws lambda create-event-source-mapping --function-name $FunctionName --event-source-arn $QueueArn --batch-size 1 --function-response-types ReportBatchItemFailures --region $Region | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo conectar la cola SQS con Lambda. Revisa la política cross-account de la cola y el rol." }
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo conectar la cola SQS con Lambda. Genera los permisos con .\friend-policies.ps1, pide al dueño de la cola que los agregue y vuelve a correr este script." }
   } else {
     aws lambda update-event-source-mapping --uuid $mappingUuid --batch-size 1 --function-response-types ReportBatchItemFailures --enabled --region $Region | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "No se pudo actualizar el trigger SQS." }

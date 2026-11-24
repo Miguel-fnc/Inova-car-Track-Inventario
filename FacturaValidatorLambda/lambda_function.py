@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,6 +33,13 @@ EXPECTED_RFC_RECEPTOR = re.sub(
     r"[^A-Z0-9&Ñ]", "", os.environ.get("EXPECTED_RFC_RECEPTOR", "").upper()
 )
 INVOICE_TABLE = os.environ.get("INVOICE_TABLE", "facturas")
+# Status shown while the invoice is being validated. Matches what the bot uses.
+IN_PROGRESS_STATUS = os.environ.get("IN_PROGRESS_STATUS", "EN_PROCESO")
+# Optional pause after marking the invoice in progress, so dashboards that poll
+# Supabase every N seconds can observe it. Capped to stay under the 60s timeout.
+PROCESSING_DELAY_SECONDS = min(
+    max(int(os.environ.get("PROCESSING_DELAY_SECONDS", "0")), 0), 40
+)
 ARCHIVE_PREFIX_BY_STATUS = {
     "aprobada": "aprobadas/",
     "rechazada": "rechazadas/",
@@ -187,6 +195,17 @@ def _save_invoice_result(invoice_id, status, cfdi_uuid, reason):
         "POST",
         INVOICE_TABLE,
         payload,
+        prefer="return=minimal",
+    )
+
+
+def _mark_in_progress(invoice_id):
+    """Set the in-progress status if the row exists; a missing row is inserted later."""
+    filter_query = urllib.parse.urlencode({"id": f"eq.{invoice_id}"})
+    _supabase_request(
+        "PATCH",
+        f"{INVOICE_TABLE}?{filter_query}",
+        {"estatus": IN_PROGRESS_STATUS},
         prefer="return=minimal",
     )
 
@@ -556,6 +575,11 @@ def _process_record(record):
         cfdi_uuid = current.get("cfdi_uuid")
         reason = current.get("validation_reason") or "Resultado de validación guardado previamente."
     else:
+        if current:
+            _mark_in_progress(invoice_id)
+        if PROCESSING_DELAY_SECONDS:
+            time.sleep(PROCESSING_DELAY_SECONDS)
+
         cfdi_uuid = None
         try:
             pdf_bytes = _download_pdf(bucket, key)

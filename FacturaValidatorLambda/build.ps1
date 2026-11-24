@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $ProjectPath = $PSScriptRoot
 $PackagePath = Join-Path $ProjectPath "package"
@@ -42,6 +42,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item -LiteralPath (Join-Path $ProjectPath "lambda_function.py") -Destination $PackagePath
+# Windows PowerShell 5.1 does not load the ZIP assembly by default.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($PackagePath, $ZipPath)
 
 Write-Host "Paquete Linux para Lambda creado: $ZipPath"

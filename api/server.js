@@ -30,7 +30,13 @@ const PRODUCT_TABLES = {
 };
 
 const INVOICE_TABLE = "facturas";
-const INVOICE_STATUSES = new Set(["creada", "en_progreso", "aprobada", "rechazada"]);
+const INVOICE_STATUS_VARIANTS = {
+  creada: ["creada", "CREADA"],
+  en_progreso: ["en_progreso", "EN_PROGRESO", "en_proceso", "EN_PROCESO"],
+  aprobada: ["aprobada", "APROBADA"],
+  rechazada: ["rechazada", "RECHAZADA"]
+};
+const INVOICE_STATUSES = new Set(Object.keys(INVOICE_STATUS_VARIANTS));
 
 const app = express();
 app.disable("x-powered-by");
@@ -135,7 +141,9 @@ app.get("/api/invoices", authenticate, async (req, res) => {
       .select("idfactura:id, status:estatus, created_at")
       .order("created_at", { ascending: false });
 
-    if (status) query = query.eq("estatus", status);
+    // The Telegram bot writes uppercase values (CREADA, EN_PROCESO) while the
+    // validator Lambda writes lowercase ones; match every known spelling.
+    if (status) query = query.in("estatus", INVOICE_STATUS_VARIANTS[status]);
 
     const { data: invoices, error } = await query;
     if (error) {

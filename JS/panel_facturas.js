@@ -22,12 +22,14 @@ logoutButton?.addEventListener('click', () => {
 });
 
 function normalizarEstado(status = '') {
-  return String(status)
+  const estado = String(status)
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[\s-]+/g, '_');
+  // El bot guarda EN_PROCESO; el panel usa en_progreso para etiqueta y color.
+  return estado === 'en_proceso' ? 'en_progreso' : estado;
 }
 
 function etiquetaEstado(status = '') {

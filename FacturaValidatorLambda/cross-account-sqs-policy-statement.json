@@ -1,14 +1,14 @@
 {
-  "Sid": "AllowInovaLambdaToConsumeInvoices",
-  "Effect": "Allow",
-  "Principal": {
-    "AWS": "arn:aws:iam::290597578821:role/LabRole"
-  },
-  "Action": [
-    "sqs:ReceiveMessage",
-    "sqs:DeleteMessage",
-    "sqs:GetQueueAttributes",
-    "sqs:ChangeMessageVisibility"
-  ],
-  "Resource": "arn:aws:sqs:us-east-1:563105261074:facturas-pendientes"
+    "Sid":  "AllowInovaLambdaToConsumeInvoices",
+    "Effect":  "Allow",
+    "Principal":  {
+                      "AWS":  "arn:aws:iam::290154654215:role/LabRole"
+                  },
+    "Action":  [
+                   "sqs:ReceiveMessage",
+                   "sqs:DeleteMessage",
+                   "sqs:GetQueueAttributes",
+                   "sqs:ChangeMessageVisibility"
+               ],
+    "Resource":  "arn:aws:sqs:us-east-1:563105261074:facturas-pendientes"
 }

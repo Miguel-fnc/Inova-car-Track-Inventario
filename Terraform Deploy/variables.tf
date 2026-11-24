@@ -52,9 +52,9 @@ variable "asg_max_size" {
 }
 
 variable "asg_target_cpu" {
-  description = "Average CPU target percentage used by the ASG target-tracking policy."
+  description = "Average CPU target percentage used by the ASG target-tracking policy. 30% is calibrated for t3.micro: the API is I/O-bound (Valkey cache + Supabase auth), so realistic load rarely pushes CPU past 35%."
   type        = number
-  default     = 50
+  default     = 30
 }
 
 variable "cache_node_type" {
