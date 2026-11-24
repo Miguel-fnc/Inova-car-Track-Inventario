@@ -6,14 +6,25 @@ import hmac
 import base64
 import urllib.request
 import urllib.parse
+import boto3
 
+from botocore.exceptions import ClientError
 from pypdf import PdfReader
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 SECRET = os.environ["TELEGRAM_WEBHOOK_SECRET"]
 
+SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
+SUPABASE_KEY = os.environ["SUPABASE_SECRET_KEY"]
+
 MAX_SIZE = 10 * 1024 * 1024  # 10 MB
 
+s3=boto3.client("s3")
+BUCKET = os.environ["FACTURAS_BUCKET"]
+
+
+sqs = boto3.client("sqs")
+QUEUE_URL = os.environ["FACTURAS_QUEUE_URL"]
 
 # Enviar mensajes al usuario
 def enviar_mensaje(chat_id, texto):
@@ -64,6 +75,8 @@ def descargar_archivo(file_id):
 
 
 # Validar contenido real del PDF
+
+# Validar contenido real del PDF
 def validar_pdf(contenido):
 
     if not contenido:
@@ -101,6 +114,168 @@ def validar_pdf(contenido):
         return False
 
 
+def registrar_en_supabase(chat_id, message_id, nombre, s3_key):
+
+    url = (
+        f"{SUPABASE_URL}/rest/v1/facturas"
+        "?on_conflict=telegram_chat_id,telegram_message_id"
+        "&select=id,estatus"
+    )
+
+    # Datos que guardaremos en la tabla
+    datos = {
+        "estatus": "CREADA",
+        "nombre_archivo": nombre,
+        "s3_key": s3_key,
+        "telegram_chat_id": str(chat_id),
+        "telegram_message_id": message_id
+    }
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=ignore-duplicates,return=representation"
+    }
+
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(datos).encode("utf-8"),
+        headers=headers,
+        method="POST"
+    )
+
+    with urllib.request.urlopen(request, timeout=10) as response:
+        registros = json.load(response)
+
+    # Si se creó la factura, devolver su registro
+    if registros:
+        return registros[0]
+
+    # Si Telegram reenvía el mismo mensaje,
+    # recuperar la factura que ya existe
+    filtros = urllib.parse.urlencode({
+        "telegram_chat_id": f"eq.{chat_id}",
+        "telegram_message_id": f"eq.{message_id}",
+        "select": "id,estatus"
+    })
+
+    consulta = urllib.request.Request(
+        f"{SUPABASE_URL}/rest/v1/facturas?{filtros}",
+        headers={"apikey": SUPABASE_KEY}
+    )
+
+    with urllib.request.urlopen(consulta, timeout=10) as response:
+        registros = json.load(response)
+
+    if not registros:
+        raise RuntimeError("No se pudo registrar la factura")
+
+    return registros[0]
+
+
+# Buscar si la factura ya existe en Supabase
+def buscar_factura(chat_id, message_id):
+
+    filtros = urllib.parse.urlencode({
+        "telegram_chat_id": f"eq.{chat_id}",
+        "telegram_message_id": f"eq.{message_id}",
+        "select": "id,estatus,s3_key",
+        "limit": 1
+    })
+
+    url = f"{SUPABASE_URL}/rest/v1/facturas?{filtros}"
+
+    headers = {
+        "apikey": SUPABASE_KEY
+    }
+
+    request = urllib.request.Request(
+        url,
+        headers=headers,
+        method="GET"
+    )
+
+    with urllib.request.urlopen(request, timeout=10) as response:
+        registros = json.load(response)
+
+    if registros:
+        return registros[0]
+
+    return None
+
+
+
+# Enviar factura a SQS y actualizar su estatus
+def encolar_factura(factura_id, s3_key):
+
+    # 1. Preparar el mensaje para Lambda 2
+    mensaje_sqs = {
+        "factura_id": str(factura_id),
+        "s3_bucket": BUCKET,
+        "s3_key": s3_key
+    }
+
+    # 2. Enviar mensaje a SQS
+    respuesta = sqs.send_message(
+        QueueUrl=QUEUE_URL,
+        MessageBody=json.dumps(mensaje_sqs)
+    )
+
+    print("Mensaje enviado a SQS:", respuesta["MessageId"])
+
+    # 3. Cambiar estatus únicamente si sigue CREADA
+    filtros = urllib.parse.urlencode({
+        "id": f"eq.{factura_id}",
+        "estatus": "eq.CREADA",
+        "select": "id,estatus"
+    })
+
+    url = f"{SUPABASE_URL}/rest/v1/facturas?{filtros}"
+
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+    request = urllib.request.Request(
+        url,
+        data=json.dumps({
+            "estatus": "EN_PROCESO"
+        }).encode("utf-8"),
+        headers=headers,
+        method="PATCH"
+    )
+
+    with urllib.request.urlopen(request, timeout=10) as response:
+        registros = json.load(response)
+
+    if registros:
+        print("Estatus actualizado: EN_PROCESO")
+        return "EN_PROCESO"
+
+    # Evitar sobrescribir un estatus que ya cambió
+    consulta = urllib.parse.urlencode({
+        "id": f"eq.{factura_id}",
+        "select": "estatus"
+    })
+
+    request = urllib.request.Request(
+        f"{SUPABASE_URL}/rest/v1/facturas?{consulta}",
+        headers={"apikey": SUPABASE_KEY},
+        method="GET"
+    )
+
+    with urllib.request.urlopen(request, timeout=10) as response:
+        registros = json.load(response)
+
+    if not registros:
+        raise RuntimeError("No se encontró la factura")
+
+    return registros[0]["estatus"]
+
+
+
 # Función principal de AWS Lambda
 def lambda_handler(event, context):
 
@@ -113,6 +288,7 @@ def lambda_handler(event, context):
         "x-telegram-bot-api-secret-token", ""
     )
 
+    # Verificar autenticidad del webhook
     if not hmac.compare_digest(recibido, SECRET):
         return {
             "statusCode": 401,
@@ -126,7 +302,6 @@ def lambda_handler(event, context):
             body = base64.b64decode(body).decode("utf-8")
 
         datos = json.loads(body)
-
         mensaje = datos.get("message", {})
 
         if not mensaje:
@@ -136,13 +311,26 @@ def lambda_handler(event, context):
             }
 
         chat_id = mensaje["chat"]["id"]
+        message_id = mensaje["message_id"]
 
-        # Comprobar que enviaron un documento
+        # ========================================
+        # 1. VERIFICAR QUE ENVIARON UN DOCUMENTO
+        # ========================================
+
         if "document" not in mensaje:
-            enviar_mensaje(
-                chat_id,
-                "Hola, envíame una factura en PDF."
-            )
+
+            if "photo" in mensaje:
+                enviar_mensaje(
+                    chat_id,
+                    "Por favor, envía un archivo PDF (.pdf) "
+                    "como documento, no una fotografía."
+                )
+            else:
+                enviar_mensaje(
+                    chat_id,
+                    "Hola, por favor envíame una "
+                    "factura en formato PDF."
+                )
 
             return {
                 "statusCode": 200,
@@ -156,14 +344,40 @@ def lambda_handler(event, context):
         file_id = documento["file_id"]
         file_size = documento.get("file_size", 0)
 
-        # Validar extensión y tipo declarado
-        if (
-            not nombre.lower().endswith(".pdf")
-            or mime_type != "application/pdf"
-        ):
+        extension = os.path.splitext(nombre)[1].lower()
+
+        # ========================================
+        # 2. VALIDAR EXTENSIÓN DEL DOCUMENTO
+        # ========================================
+
+        if extension != ".pdf":
+
+            tipo_recibido = (
+                extension if extension else "sin extensión"
+            )
+
             enviar_mensaje(
                 chat_id,
-                "Archivo rechazado. Debes enviar un PDF."
+                f"Archivo no permitido.\n"
+                f"Recibimos un archivo {tipo_recibido}.\n"
+                f"Por favor, envía un archivo PDF (.pdf)."
+            )
+
+            print("Archivo rechazado:", nombre)
+
+            return {
+                "statusCode": 200,
+                "body": "OK"
+            }
+
+        # Validar MIME type
+        if mime_type != "application/pdf":
+
+            enviar_mensaje(
+                chat_id,
+                "El documento no fue identificado "
+                "como un PDF.\n"
+                "Por favor, envía un archivo PDF válido."
             )
 
             return {
@@ -171,11 +385,13 @@ def lambda_handler(event, context):
                 "body": "OK"
             }
 
-        # Validar tamaño
+        # Validar tamaño máximo
         if file_size > MAX_SIZE:
+
             enviar_mensaje(
                 chat_id,
-                "Archivo rechazado. Máximo 10 MB."
+                "Archivo rechazado.\n"
+                "El tamaño máximo permitido es 10 MB."
             )
 
             return {
@@ -183,27 +399,162 @@ def lambda_handler(event, context):
                 "body": "OK"
             }
 
-        # Descargar archivo
+        # ========================================
+        # 3. PROTECCIÓN CONTRA DUPLICADOS
+        # ========================================
+
+        factura_existente = buscar_factura(
+            chat_id=chat_id,
+            message_id=message_id
+        )
+
+        if factura_existente:
+
+            factura_id = factura_existente["id"]
+            estatus = factura_existente["estatus"]
+
+            print("Factura existente:", factura_id)
+            print("Estatus actual:", estatus)
+
+            # Si quedó CREADA por un fallo anterior,
+            # recuperar el envío a SQS
+            if estatus == "CREADA":
+
+                estado = encolar_factura(
+                    factura_id=factura_id,
+                    s3_key=factura_existente["s3_key"]
+                )
+
+                print("Estado después de SQS:", estado)
+
+                enviar_mensaje(
+                    chat_id,
+                    f"Factura enviada a validación.\n"
+                    f"ID: {factura_id}\n"
+                    f"Estatus: {estado}"
+                )
+
+            else:
+                # No volver a descargar ni encolar
+                print(
+                    "Factura ya enviada o procesada:",
+                    estatus
+                )
+
+            return {
+                "statusCode": 200,
+                "body": "OK"
+            }
+
+        # ========================================
+        # 4. DESCARGAR Y VALIDAR EL PDF
+        # ========================================
+
         contenido = descargar_archivo(file_id)
 
-        # Validar que realmente sea PDF
-        if validar_pdf(contenido):
+        if not validar_pdf(contenido):
 
             enviar_mensaje(
                 chat_id,
-                "PDF válido. Archivo recibido correctamente."
-            )
-
-            print("PDF válido:", nombre)
-
-        else:
-
-            enviar_mensaje(
-                chat_id,
-                "Archivo rechazado. El PDF es inválido o está dañado."
+                "El archivo PDF está dañado "
+                "o no tiene una estructura válida.\n"
+                "Por favor, envía otro archivo PDF."
             )
 
             print("PDF inválido:", nombre)
+
+            return {
+                "statusCode": 200,
+                "body": "OK"
+            }
+
+        print("PDF válido:", nombre)
+
+        # ========================================
+        # 5. GUARDAR EL PDF EN AMAZON S3
+        # ========================================
+
+        s3_key = (
+            f"pendientes/{chat_id}/{message_id}.pdf"
+        )
+
+        try:
+            s3.put_object(
+                Bucket=BUCKET,
+                Key=s3_key,
+                Body=contenido,
+                ContentType="application/pdf",
+                IfNoneMatch="*"
+            )
+
+            print("PDF guardado en S3:", s3_key)
+
+        except ClientError as error:
+
+            codigo = error.response["Error"]["Code"]
+
+            if codigo in ("PreconditionFailed", "412"):
+                print(
+                    "El PDF ya existe en S3:",
+                    s3_key
+                )
+            else:
+                raise
+
+        # ========================================
+        # 6. REGISTRAR FACTURA EN SUPABASE
+        # ========================================
+
+        factura = registrar_en_supabase(
+            chat_id=chat_id,
+            message_id=message_id,
+            nombre=nombre,
+            s3_key=s3_key
+        )
+
+        factura_id = factura["id"]
+        estatus = factura["estatus"]
+
+        print(
+            "Factura registrada en Supabase:",
+            factura_id
+        )
+
+        print("Estatus inicial:", estatus)
+
+        # ========================================
+        # 7. ENVIAR FACTURA A AMAZON SQS
+        # ========================================
+
+        if estatus == "CREADA":
+
+            estado = encolar_factura(
+                factura_id=factura_id,
+                s3_key=s3_key
+            )
+
+            print("Factura enviada a SQS:", factura_id)
+
+        else:
+            # Evitar sobrescribir un estado existente
+            estado = estatus
+
+            print(
+                "Factura ya enviada o procesada:",
+                estado
+            )
+
+        # ========================================
+        # 8. NOTIFICAR AL USUARIO EN TELEGRAM
+        # ========================================
+
+        enviar_mensaje(
+            chat_id,
+            f"Factura registrada correctamente.\n"
+            f"ID: {factura_id}\n"
+            f"Estatus: {estado}\n"
+            f"Documento enviado a validación."
+        )
 
         return {
             "statusCode": 200,
@@ -211,7 +562,12 @@ def lambda_handler(event, context):
         }
 
     except Exception as error:
-        print("Error de procesamiento:", type(error).__name__)
+
+        print(
+            "Error de procesamiento:",
+            type(error).__name__,
+            str(error)
+        )
 
         return {
             "statusCode": 500,
